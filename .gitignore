@@ -1,4 +1,15 @@
-.DS_Store
-.vercel
 .env
 .env.*
+.env.local
+bridge/node_modules/
+
+# Node / Next (messaging-console and any future JS)
+**/node_modules/
+**/.next/
+out/
+dist/
+.vercel
+*.log
+
+# Local secret dumps (never commit)
+.secrets/

@@ -1,0 +1,60 @@
+{
+  "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111010200",
+  "name": "AntiTrader funnel → Twenty Person",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "funnel-capture",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111020101",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "a1b2c3d4-1a2b-3c4d-5e6f-000000000002"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "async function main() {\n  const raw = String($env.TWENTY_INTERNAL_BASE || '');\n  const base = raw.endsWith('/') ? raw.slice(0, -1) : raw;\n  const token = $env.TWENTY_API_KEY;\n  if (!base || !token) throw new Error('TWENTY_INTERNAL_BASE and TWENTY_API_KEY must be set');\n  const b = $input.first().json;\n  const p = b.payload || {};\n  const email = (p.email || '').trim();\n  const firstName = (p.firstName || '').trim() || 'Lead';\n  const lastName = (p.lastName || '').trim() || 'Contact';\n  const phone = (p.phone || '').trim();\n  if (!email) return [];\n  const utmLine = [\n    p.utm_source && 'utm_source=' + p.utm_source,\n    p.utm_medium && 'utm_medium=' + p.utm_medium,\n    p.utm_campaign && 'utm_campaign=' + p.utm_campaign,\n    p.utm_content && 'utm_content=' + p.utm_content,\n  ].filter(Boolean).join(' | ');\n  const jobLine = utmLine ? 'Funnel | ' + utmLine : 'Funnel (no UTM)';\n  const authHeaders = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };\n  const filter = 'emails.primaryEmail[eq]:' + email;\n  const url = base + '/rest/people?filter=' + encodeURIComponent(filter) + '&limit=1';\n  const getRes = await this.helpers.httpRequest({ method: 'GET', url, headers: authHeaders, json: true });\n  const people = getRes && getRes.data && Array.isArray(getRes.data.people) ? getRes.data.people : [];\n  const existing = people[0] || null;\n  if (existing && existing.id) {\n    const prior = String(existing.jobTitle || '').trim();\n    const mergedJobTitle = (prior ? prior + ' | ' + jobLine : jobLine).slice(0, 500);\n    const patchBody = { jobTitle: mergedJobTitle };\n    if (phone && !(existing.phones && existing.phones.primaryPhoneNumber)) {\n      patchBody.phones = {\n        primaryPhoneNumber: phone,\n        primaryPhoneCountryCode: '',\n        primaryPhoneCallingCode: '',\n        additionalPhones: null,\n      };\n    }\n    const patchRes = await this.helpers.httpRequest({\n      method: 'PATCH',\n      url: base + '/rest/people/' + existing.id,\n      headers: authHeaders,\n      body: patchBody,\n      json: true,\n    });\n    return [{ json: { ok: true, action: 'updated', personId: existing.id, twenty: patchRes } }];\n  }\n  const twentyBody = {\n    name: { firstName, lastName },\n    emails: { primaryEmail: email, additionalEmails: null },\n    jobTitle: jobLine,\n  };\n  if (phone) {\n    twentyBody.phones = {\n      primaryPhoneNumber: phone,\n      primaryPhoneCountryCode: '',\n      primaryPhoneCallingCode: '',\n      additionalPhones: null,\n    };\n  }\n  const postRes = await this.helpers.httpRequest({\n    method: 'POST',\n    url: base + '/rest/people',\n    headers: authHeaders,\n    body: twentyBody,\n    json: true,\n  });\n  return [{ json: { ok: true, action: 'created', twenty: postRes } }];\n}\nreturn await main.call(this);\n"
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111020102",
+      "name": "Find or create Person",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Find or create Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

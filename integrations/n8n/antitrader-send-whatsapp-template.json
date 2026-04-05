@@ -1,0 +1,60 @@
+{
+  "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111010600",
+  "name": "AntiTrader outbound WhatsApp (template)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "antitrader-send-whatsapp",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111060101",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        680
+      ],
+      "webhookId": "a1b2c3d4-1a2b-3c4d-5e6f-000000000006"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "async function main() {\n  const expected = $env.N8N_ANTITRADER_OUTBOUND_SECRET;\n  if (!expected) throw new Error('N8N_ANTITRADER_OUTBOUND_SECRET must be set on n8n');\n  const raw = $input.first().json;\n  const j = raw.body !== undefined && typeof raw.body === 'object' && !Array.isArray(raw.body) && (raw.body.toE164 !== undefined || raw.body.webhookSecret !== undefined || raw.body.templateName !== undefined)\n    ? raw.body\n    : raw;\n  const hdrs = raw.headers || {};\n  const secretHdr = hdrs['x-antitrader-webhook-secret'] || hdrs['X-Antitrader-Webhook-Secret'];\n  const secret = j.webhookSecret || secretHdr;\n  if (secret !== expected) throw new Error('unauthorized');\n  const toRaw = String(j.toE164 || j.to || '').trim();\n  const templateName = String(j.templateName || j.template || '').trim();\n  const languageCode = String(j.languageCode || j.language || 'en_US').trim();\n  if (!toRaw || !templateName) throw new Error('toE164 and templateName are required');\n  const digits = toRaw.replace(/\\D/g, '');\n  if (!digits || digits.length < 8) throw new Error('invalid phone number');\n  const token = $env.WHATSAPP_CLOUD_ACCESS_TOKEN;\n  const phoneId = $env.WHATSAPP_PHONE_NUMBER_ID;\n  const verRaw = String($env.WHATSAPP_GRAPH_API_VERSION || 'v21.0').trim();\n  const ver = verRaw.startsWith('v') ? verRaw : 'v' + verRaw;\n  if (!token || !phoneId) throw new Error('WHATSAPP_CLOUD_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID must be set on n8n');\n  const url = 'https://graph.facebook.com/' + ver + '/' + phoneId + '/messages';\n  const tpl = {\n    name: templateName,\n    language: { code: languageCode },\n  };\n  const bodyParams = j.bodyParameters;\n  if (Array.isArray(bodyParams) && bodyParams.length > 0) {\n    tpl.components = [\n      {\n        type: 'body',\n        parameters: bodyParams.map(function (x) {\n          return { type: 'text', text: String(x) };\n        }),\n      },\n    ];\n  }\n  const payload = {\n    messaging_product: 'whatsapp',\n    recipient_type: 'individual',\n    to: digits,\n    type: 'template',\n    template: tpl,\n  };\n  const r = await this.helpers.httpRequest({\n    method: 'POST',\n    url: url,\n    headers: {\n      Authorization: 'Bearer ' + token,\n      'Content-Type': 'application/json',\n    },\n    body: payload,\n    json: true,\n  });\n  return [{ json: { ok: true, whatsapp: r } }];\n}\nreturn await main.call(this);\n"
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111060102",
+      "name": "Send template via Cloud API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        680
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send template via Cloud API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+  AntiTrader School — skybox student dashboard (Pulmón Verde passport layout, school content).
+
+  Background: Blockade equirect — run from repo root:
+    pip install requests && export BLOCKADE_LABS_API_KEY=…
+    python3 AntiTrader/student-dashboard/scripts/generate_skybox.py
+  Writes default-skybox.json; this page fetch()s it when served over HTTP.
+
+  Serve (required for fetch + CORS on skybox image):
+    cd AntiTrader/student-dashboard && python3 -m http.server 8765
+    → http://localhost:8765/student-dashboard.html
+
+  Overrides: ?skyboxUrl=  |  ?worldId=&apiUrl=  |  ?demo=1  |  JWT localStorage antitrader_oasis_jwt
+-->
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AntiTrader School — Student dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --void:        #04060c;
+      --moss:        #3d8f9a;
+      --moss2:       #5ec4d4;
+      --moss-glow:   rgba(62, 143, 154, 0.18);
+      --moss-border: rgba(94, 196, 212, 0.32);
+      --gold:        #d4a84b;
+      --gold2:       #f0d49a;
+      --teal:        #7eb8ff;
+      --amber:       #e8a050;
+      --dim:         rgba(232, 240, 248, 0.48);
+      --panel-bg:    rgba(6, 12, 22, 0.88);
+      --mono:        'JetBrains Mono', ui-monospace, monospace;
+      --display:     'Instrument Serif', Georgia, serif;
+      --bar-h:       46px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--void);
+      color: #e8f0f8;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+    #viewport { position: fixed; inset: 0; z-index: 0; }
+    #vignette {
+      position: fixed; inset: 0; z-index: 1; pointer-events: none;
+      background: radial-gradient(ellipse at center, transparent 26%, rgba(4, 8, 16, 0.55) 68%, rgba(2, 4, 10, 0.92) 100%);
+    }
+    #scanlines {
+      position: fixed; inset: 0; z-index: 2; pointer-events: none;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.05) 2px, rgba(0,0,0,0.05) 4px);
+    }
+    #hud { position: fixed; inset: 0; z-index: 3; display: flex; flex-direction: column; pointer-events: none; }
+    #hud > * { pointer-events: auto; }
+    #top-bar {
+      height: var(--bar-h);
+      background: rgba(4, 8, 18, 0.94);
+      border-bottom: 1px solid var(--moss-border);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.35rem; flex-shrink: 0; gap: 0.75rem; min-width: 0;
+    }
+    .tb-section { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+    .tb-logo {
+      font-family: var(--display); font-size: 1.08rem; font-weight: 400;
+      color: var(--moss2); letter-spacing: 0.06em;
+    }
+    .tb-sep { color: var(--moss-border); flex-shrink: 0; }
+    .tb-sub { font-size: 0.58rem; color: var(--dim); letter-spacing: 0.12em; text-transform: uppercase; }
+    #tb-oasis-signin {
+      font-family: var(--mono); font-size: 0.52rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.25rem 0.5rem; border-radius: 4px;
+      background: rgba(126, 184, 255, 0.12); border: 1px solid rgba(126, 184, 255, 0.4); color: var(--teal);
+      cursor: pointer; flex-shrink: 0;
+    }
+    .tb-center {
+      font-family: var(--display); font-size: 0.62rem; letter-spacing: 0.16em;
+      color: var(--moss); text-transform: uppercase;
+      display: flex; align-items: center; gap: 0.45rem;
+    }
+    #tb-clock { font-size: 0.62rem; color: var(--dim); letter-spacing: 0.1em; }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--moss2); box-shadow: 0 0 6px var(--moss2);
+      animation: blink 2.2s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+    .tier-badge {
+      font-size: 0.52rem; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 0.16rem 0.6rem;
+      border: 1px solid var(--gold);
+      color: var(--gold2);
+      font-family: var(--display);
+    }
+    .tier-badge.explorer { border-color: #5a8fa8; color: #8ecae6; }
+    .tier-badge.practitioner { border-color: #6a9b6a; color: #a8d4a8; }
+    .tier-badge.strategist { border-color: #c9a84c; color: var(--gold2); }
+    .tier-badge.mentor { border-color: #b87ab8; color: #e8b8e8; }
+
+    #grid {
+      flex: 1; overflow: hidden;
+      display: grid;
+      grid-template-columns: minmax(0, 248px) 1fr minmax(0, 248px);
+      gap: 0.5rem; padding: 0.5rem;
+      min-width: 0;
+    }
+    .col { display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; min-width: 0; scrollbar-width: thin; }
+    .col::-webkit-scrollbar { width: 3px; }
+    .col::-webkit-scrollbar-thumb { background: rgba(62, 143, 154, 0.35); }
+    #col-center { pointer-events: none; }
+    #col-center > * { pointer-events: auto; }
+
+    .panel {
+      background: var(--panel-bg);
+      border: 1px solid var(--moss-border);
+      box-shadow: inset 0 0 20px var(--moss-glow), 0 0 12px rgba(0,0,0,0.4);
+      padding: 0.72rem 0.82rem;
+      backdrop-filter: blur(10px);
+      position: relative; overflow: hidden; min-width: 0;
+    }
+    .panel::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--moss2), transparent);
+      opacity: 0.45;
+    }
+    .panel-hdr {
+      font-family: var(--display); font-size: 0.72rem; font-weight: 400;
+      letter-spacing: 0.14em; color: var(--moss2); text-transform: uppercase;
+      padding-bottom: 0.45rem; margin-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(94, 196, 212, 0.2);
+      display: flex; align-items: center; justify-content: space-between; gap: 0.45rem;
+    }
+    .panel-hdr-tag { font-size: 0.5rem; color: var(--dim); letter-spacing: 0.1em; font-family: var(--mono); }
+    .stat-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 0.4rem; padding: 0.2rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .stat-row:last-child { border-bottom: none; }
+    .lbl { font-size: 9px; color: var(--dim); letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
+    .val { font-size: 11px; color: #e8f0f8; text-align: right; word-break: break-word; }
+    .val.gold { color: var(--gold2); }
+    .val.cyan { color: var(--teal); }
+    .val.mono { font-family: var(--mono); font-size: 10px; }
+    .val.badge { display: inline-block; padding: 0.08rem 0.35rem; font-size: 0.55rem; letter-spacing: 0.08em; border: 1px solid currentColor; }
+    .val.badge.green { color: var(--moss2); }
+    .divider { height: 1px; background: rgba(255,255,255,0.06); margin: 0.45rem 0; }
+    .min-w-0 { min-width: 0; }
+
+    .oasis-auth-wrap { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid rgba(94,196,212,0.15); }
+    .oa-title { font-size: 0.5rem; letter-spacing: 0.12em; color: var(--dim); text-transform: uppercase; margin-bottom: 0.4rem; }
+    .oasis-auth-wrap input {
+      width: 100%; margin-bottom: 0.32rem; padding: 0.36rem 0.48rem;
+      font-family: var(--mono); font-size: 0.6rem;
+      background: rgba(0,0,0,0.35); border: 1px solid var(--moss-border); color: #e8f0f8; border-radius: 4px; box-sizing: border-box;
+    }
+    .oasis-auth-btn {
+      width: 100%; margin-top: 0.15rem; padding: 0.4rem 0.5rem;
+      font-family: var(--mono); font-size: 0.54rem; letter-spacing: 0.1em; text-transform: uppercase;
+      background: rgba(126,184,255,0.18); border: 1px solid rgba(126,184,255,0.42); color: var(--teal);
+      cursor: pointer; border-radius: 4px;
+    }
+    .oasis-auth-out {
+      margin-top: 0.32rem; padding: 0.3rem 0.48rem;
+      font-family: var(--mono); font-size: 0.5rem;
+      background: transparent; border: 1px dashed rgba(94,196,212,0.35); color: var(--dim);
+      cursor: pointer; border-radius: 4px; width: 100%;
+    }
+    .oasis-auth-msg { font-size: 0.5rem; color: var(--dim); margin-top: 0.35rem; min-height: 1em; }
+    .oasis-auth-msg.err { color: #e8a090; }
+
+    #av-wrap { text-align: center; padding-bottom: 0.55rem; }
+    #av-ring {
+      width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 0.45rem;
+      display: flex; align-items: center; justify-content: center;
+      font-family: var(--display); font-size: 1.45rem;
+      color: rgba(0,0,0,0.5);
+      border: 2px solid rgba(62, 143, 154, 0.55);
+      box-shadow: 0 0 22px rgba(62, 143, 154, 0.22), inset 0 0 12px rgba(62, 143, 154, 0.1);
+      background: linear-gradient(135deg, #0f1a28, #1a3048);
+      position: relative;
+    }
+    #av-name { font-family: var(--display); font-size: 1.02rem; color: var(--moss2); }
+    #av-location { font-size: 0.6rem; color: var(--dim); margin-top: 0.18rem; }
+    #av-since { font-size: 0.58rem; color: var(--dim); margin-top: 0.08rem; }
+
+    .prog-wrap { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.45rem; min-width: 0; }
+    .prog-track { flex: 1; min-width: 0; height: 4px; background: rgba(255,255,255,0.08); overflow: hidden; }
+    .prog-fill { height: 100%; background: linear-gradient(90deg, var(--moss), var(--moss2)); box-shadow: 0 0 6px var(--moss2); transition: width 1s ease; }
+    .prog-fill.cyan { background: var(--teal); box-shadow: 0 0 6px var(--teal); }
+    .prog-pct { font-size: 9px; color: var(--dim); white-space: nowrap; }
+
+    .stamps-grid { display: flex; flex-wrap: wrap; gap: 0.32rem; margin-top: 0.28rem; }
+    .stamp {
+      padding: 0.2rem 0.4rem; font-size: 0.5rem; letter-spacing: 0.06em;
+      border: 1px solid rgba(94,196,212,0.35); color: var(--moss2);
+      text-transform: uppercase; font-family: var(--display);
+    }
+    .stamp.earned { border-color: var(--moss2); background: rgba(62,143,154,0.12); }
+    .stamp.locked { opacity: 0.3; border-style: dashed; }
+
+    .quest-item { display: flex; align-items: flex-start; gap: 0.45rem; padding: 0.38rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); min-width: 0; }
+    .quest-item:last-child { border-bottom: none; }
+    .quest-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-top: 3px; background: var(--dim); }
+    .quest-dot.done { background: var(--moss2); box-shadow: 0 0 5px var(--moss2); }
+    .quest-dot.active { background: var(--gold); box-shadow: 0 0 5px var(--gold); animation: blink 1.8s ease-in-out infinite; }
+    .quest-name { font-size: 0.66rem; color: #e8f0f8; line-height: 1.35; word-break: break-word; }
+    .quest-meta { font-size: 0.56rem; color: var(--dim); margin-top: 0.08rem; }
+    .quest-reward { font-size: 0.58rem; color: var(--gold); margin-left: auto; white-space: nowrap; flex-shrink: 0; }
+
+    .feed-item { display: flex; align-items: baseline; gap: 0.45rem; padding: 0.28rem 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.64rem; min-width: 0; }
+    .feed-item:last-child { border-bottom: none; }
+    .feed-ts { color: var(--dim); white-space: nowrap; flex-shrink: 0; font-size: 0.56rem; }
+    .feed-msg { color: #d0dce8; flex: 1; min-width: 0; word-break: break-word; }
+    .feed-pts { color: var(--gold); white-space: nowrap; flex-shrink: 0; }
+
+    #center-top { display: flex; gap: 0.45rem; flex-shrink: 0; min-width: 0; }
+    #center-mid { flex: 1; }
+    .center-stat {
+      flex: 1; min-width: 0; padding: 0.55rem 0.65rem;
+      background: rgba(6, 12, 22, 0.78);
+      border: 1px solid var(--moss-border);
+      backdrop-filter: blur(8px);
+      text-align: center; position: relative;
+    }
+    .center-stat::before {
+      content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--moss2), transparent);
+      opacity: 0.45;
+    }
+    .center-stat .big-num { font-family: var(--display); font-size: 1.55rem; font-weight: 400; line-height: 1; color: var(--moss2); }
+    .center-stat .big-num.gold { color: var(--gold2); }
+    .center-stat .big-num.cyan { color: var(--teal); }
+    .center-stat .big-lbl { font-size: 0.5rem; letter-spacing: 0.12em; color: var(--dim); text-transform: uppercase; margin-top: 0.18rem; }
+
+    #ticker {
+      height: 28px; overflow: hidden;
+      background: rgba(4, 8, 18, 0.92);
+      border-top: 1px solid var(--moss-border);
+      display: flex; align-items: center; flex-shrink: 0; min-width: 0;
+    }
+    #ticker-label { padding: 0 0.75rem; font-family: var(--display); font-size: 0.54rem; letter-spacing: 0.12em; color: var(--moss2); border-right: 1px solid var(--moss-border); white-space: nowrap; }
+    #ticker-track { flex: 1; min-width: 0; overflow: hidden; }
+    #ticker-scroll {
+      white-space: nowrap; font-size: 0.58rem; color: var(--dim); letter-spacing: 0.05em;
+      animation: ticker-scroll 36s linear infinite; display: inline-block; padding-left: 100%;
+    }
+    @keyframes ticker-scroll { 0%{transform:translateX(0)} 100%{transform:translateX(-100%)} }
+
+    .passport-auth-gate {
+      position: fixed; inset: 0; z-index: 110;
+      display: flex; align-items: center; justify-content: center; padding: 1.2rem;
+      background: radial-gradient(ellipse 120% 80% at 50% 18%, rgba(20, 36, 52, 0.88) 0%, var(--void) 58%);
+    }
+    .passport-auth-gate.hidden { display: none !important; }
+    .passport-auth-gate-card {
+      width: 100%; max-width: 380px;
+      background: var(--panel-bg);
+      border: 1px solid var(--moss-border);
+      padding: 1.25rem 1.15rem 1rem;
+      border-radius: 6px;
+    }
+    .passport-auth-gate-logo { font-family: var(--display); font-size: 1.4rem; text-align: center; color: var(--moss2); letter-spacing: 0.12em; }
+    .passport-auth-gate-sub { font-size: 0.6rem; color: var(--dim); text-align: center; text-transform: uppercase; letter-spacing: 0.1em; margin: 0.45rem 0 0.9rem; line-height: 1.45; }
+    .gate-demo-link {
+      display: block; width: 100%; margin-top: 0.9rem; padding: 0.45rem;
+      font-family: var(--mono); font-size: 0.52rem; color: var(--dim); background: transparent; border: none;
+      cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+    }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 100;
+      background: var(--void);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1.1rem; transition: opacity 0.85s ease;
+    }
+    #loading.fade-out { opacity: 0; pointer-events: none; }
+    .load-logo { font-family: var(--display); font-size: 1.55rem; color: var(--moss2); letter-spacing: 0.14em; }
+    .load-sub { font-size: 0.6rem; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
+    .load-bar-wrap { width: 200px; max-width: 70vw; height: 2px; background: rgba(62,143,154,0.2); }
+    .load-bar { height: 100%; background: var(--moss2); width: 0%; transition: width 0.35s ease; box-shadow: 0 0 8px var(--moss2); }
+    .load-status { font-size: 0.56rem; color: var(--dim); letter-spacing: 0.08em; text-align: center; padding: 0 1rem; }
+
+    #drag-hint {
+      position: fixed; bottom: 38px; left: 50%; transform: translateX(-50%); z-index: 4;
+      font-size: 0.56rem; color: rgba(94,196,212,0.42); letter-spacing: 0.12em; text-transform: uppercase;
+      pointer-events: none; transition: opacity 1s ease;
+    }
+    #drag-hint.hide { opacity: 0; }
+
+    .skybox-missing-hint {
+      position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); z-index: 5;
+      max-width: min(520px, 92vw); padding: 0.7rem 0.95rem;
+      background: rgba(4, 8, 18, 0.94); border: 1px solid var(--moss-border);
+      font-size: 0.6rem; color: var(--dim); line-height: 1.45; pointer-events: auto;
+    }
+    .skybox-missing-hint code { font-size: 0.55rem; color: var(--teal); word-break: break-all; }
+    .skybox-missing-hint.hidden { display: none; }
+
+    .gauge-wrap { position: relative; width: 96px; height: 96px; margin: 0.25rem auto 0.45rem; }
+    #study-svg { width: 96px; height: 96px; }
+    .gauge-center {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+    .gauge-val { font-family: var(--display); font-size: 1.12rem; color: var(--moss2); }
+    .gauge-lbl { font-size: 0.52rem; letter-spacing: 0.14em; color: var(--dim); text-transform: uppercase; }
+
+    @media (max-width: 900px) {
+      #grid { grid-template-columns: minmax(0, 200px) 1fr minmax(0, 190px); }
+    }
+    @media (max-width: 640px) {
+      #grid { display: block; overflow-y: auto; height: calc(100% - var(--bar-h) - 28px); padding: 0.4rem; }
+      .col { margin-bottom: 0.4rem; }
+      #center-top { flex-wrap: wrap; }
+      .center-stat { min-width: 45%; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="load-logo">AntiTrader School</div>
+  <div class="load-sub">Skybox student dashboard</div>
+  <div class="load-bar-wrap"><div class="load-bar" id="load-bar"></div></div>
+  <div class="load-status" id="load-status">Preparing learning environment…</div>
+</div>
+
+<div id="passport-auth-gate" class="passport-auth-gate hidden" aria-modal="true">
+  <div class="passport-auth-gate-card">
+    <h1 class="passport-auth-gate-logo">AntiTrader School</h1>
+    <p class="passport-auth-gate-sub">Sign in with OASIS to sync your profile, or continue in demo mode.</p>
+    <div class="oasis-auth-wrap" style="margin:0;border:none;padding:0">
+      <form id="gate-auth-form" autocomplete="on">
+        <input type="text" id="gate-auth-user" autocomplete="username" placeholder="OASIS username" />
+        <input type="password" id="gate-auth-pass" autocomplete="current-password" placeholder="Password" />
+        <button type="submit" id="gate-auth-submit" class="oasis-auth-btn">Enter dashboard</button>
+        <p id="gate-auth-msg" class="oasis-auth-msg"></p>
+      </form>
+    </div>
+    <button type="button" id="gate-demo-btn" class="gate-demo-link">Continue without signing in (demo)</button>
+    <p style="font-size:0.48rem;color:rgba(232,240,248,0.35);text-align:center;margin-top:0.65rem">Add <code style="color:var(--teal)">?demo=1</code> to skip this screen.</p>
+  </div>
+</div>
+
+<div id="viewport"></div>
+<div id="vignette"></div>
+<div id="scanlines"></div>
+<div id="drag-hint">drag to look around</div>
+
+<div id="skybox-missing-hint" class="skybox-missing-hint hidden" role="status">
+  <p><strong>No skybox image.</strong> Run <code>python3 AntiTrader/student-dashboard/scripts/generate_skybox.py</code> (needs <code>BLOCKADE_LABS_API_KEY</code>), then reload over HTTP so <code>default-skybox.json</code> loads.</p>
+  <p style="margin-top:0.4rem">Or pass <code>?skyboxUrl=&lt;Blockade file_url&gt;</code> · <code>?worldId=&amp;apiUrl=</code> for STAR holon.</p>
+</div>
+
+<div id="hud">
+  <header id="top-bar">
+    <div class="tb-section">
+      <span class="tb-logo">AntiTrader School</span>
+      <span class="tb-sep">|</span>
+      <span class="tb-sub">Student</span>
+    </div>
+    <div class="tb-center">
+      <div class="status-dot"></div>
+      <span id="tb-system">OASIS · learning layer</span>
+    </div>
+    <div class="tb-section">
+      <button type="button" id="tb-oasis-signin">OASIS sign-in</button>
+      <span id="tier-display" class="tier-badge explorer">Explorer</span>
+      <span id="tb-clock">--:--:--</span>
+    </div>
+  </header>
+
+  <div id="grid">
+    <div class="col" id="col-left">
+      <div class="panel">
+        <div class="panel-hdr">Identity <span class="panel-hdr-tag" id="school-id-tag">Student ID</span></div>
+        <div id="oasis-auth-panel" class="oasis-auth-wrap" style="margin-top:0;border:none;padding-top:0">
+          <div class="oa-title">OASIS session</div>
+          <div id="oasis-auth-signed" style="display:none">
+            <p style="font-size:0.55rem;color:var(--dim);margin:0 0 0.35rem">Signed in.</p>
+            <button type="button" id="oasis-auth-signout" class="oasis-auth-out">Sign out</button>
+          </div>
+          <form id="oasis-auth-form" autocomplete="on">
+            <input type="text" id="oasis-auth-user" autocomplete="username" placeholder="Username" />
+            <input type="password" id="oasis-auth-pass" autocomplete="current-password" placeholder="Password" />
+            <button type="submit" id="oasis-auth-submit" class="oasis-auth-btn">Sign in</button>
+            <p id="oasis-auth-msg" class="oasis-auth-msg"></p>
+          </form>
+        </div>
+        <div class="divider"></div>
+        <div id="av-wrap">
+          <div id="av-ring"><span id="av-initials">?</span></div>
+          <div>
+            <div id="av-name">—</div>
+            <div id="av-location">📊 Live markets lab · AntiTrader</div>
+            <div id="av-since">Enrolled <span id="member-since">—</span></div>
+          </div>
+        </div>
+        <div class="stat-row"><span class="lbl">Learner ID</span><span class="val mono cyan" id="passport-id">—</span></div>
+        <div class="stat-row"><span class="lbl">Phase</span><span class="val gold" id="current-chapter">—</span></div>
+        <div class="stat-row"><span class="lbl">Status</span><span class="val badge green" id="member-status">ACTIVE</span></div>
+        <div class="stat-row"><span class="lbl">Last activity</span><span class="val" id="last-checkin">—</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hdr">Track progress</div>
+        <div class="stat-row"><span class="lbl">Level</span><span class="val badge explorer" id="tier-label">Explorer</span></div>
+        <div class="divider"></div>
+        <div class="stat-row" style="margin-bottom:0.28rem"><span class="lbl">Hours to next level</span><span class="val gold" id="hours-to-next">—</span></div>
+        <div class="prog-wrap"><div class="prog-track"><div class="prog-fill" id="tier-bar" style="width:0%"></div></div><span class="prog-pct" id="tier-pct">0%</span></div>
+        <div class="stat-row" style="margin-bottom:0.28rem"><span class="lbl">Curriculum arc</span><span class="val cyan" id="chapter-pct">—</span></div>
+        <div class="prog-wrap"><div class="prog-track"><div class="prog-fill cyan" id="chapter-bar" style="width:0%"></div></div><span class="prog-pct" id="chapter-bar-pct">0%</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hdr">Badges</div>
+        <div class="stamps-grid" id="stamps"></div>
+      </div>
+    </div>
+
+    <div class="col" id="col-center">
+      <div id="center-top">
+        <div class="center-stat"><div class="big-num" id="c-modules">—</div><div class="big-lbl">Modules done</div></div>
+        <div class="center-stat"><div class="big-num gold" id="c-hours">—</div><div class="big-lbl">Study hours</div></div>
+        <div class="center-stat"><div class="big-num cyan" id="c-streak">—</div><div class="big-lbl">Day streak</div></div>
+        <div class="center-stat"><div class="big-num" id="c-journal">—</div><div class="big-lbl">Journal entries</div></div>
+      </div>
+      <div id="center-mid"></div>
+      <div class="panel" id="center-bottom">
+        <div class="panel-hdr">Activity <span class="panel-hdr-tag" id="feed-count">0 events</span></div>
+        <div id="activity-feed"></div>
+      </div>
+    </div>
+
+    <div class="col" id="col-right">
+      <div class="panel">
+        <div class="panel-hdr">Study focus</div>
+        <div class="gauge-wrap">
+          <svg id="study-svg" viewBox="0 0 96 96">
+            <circle cx="48" cy="48" r="40" fill="none" stroke="rgba(62,143,154,0.15)" stroke-width="6"/>
+            <circle cx="48" cy="48" r="40" fill="none" stroke="url(#atStudyGrad)" stroke-width="6" stroke-linecap="round"
+              stroke-dasharray="251.2" stroke-dashoffset="251.2" id="study-arc" transform="rotate(-90 48 48)"/>
+            <defs>
+              <linearGradient id="atStudyGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#3d8f9a"/><stop offset="100%" stop-color="#d4a84b"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="gauge-center">
+            <span class="gauge-val" id="study-val">0</span>
+            <span class="gauge-lbl">hours</span>
+          </div>
+        </div>
+        <div class="stat-row"><span class="lbl">Assignments due</span><span class="val gold" id="assignments-due">—</span></div>
+        <div class="stat-row"><span class="lbl">Lab sessions</span><span class="val" id="lab-sessions">—</span></div>
+        <div class="divider"></div>
+        <div class="stat-row"><span class="lbl">Next milestone</span><span class="val gold" id="next-milestone">—</span></div>
+        <div class="prog-wrap"><div class="prog-track"><div class="prog-fill" id="milestone-bar" style="width:0%"></div></div><span class="prog-pct" id="milestone-pct">—</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hdr">Active modules</div>
+        <div id="quest-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ticker">
+    <div id="ticker-label">LIVE</div>
+    <div id="ticker-track">
+      <div id="ticker-scroll">
+        ANTITRADER SCHOOL · RISK · PSYCHOLOGY · EXECUTION · JOURNALING ·
+        SKYBOX ENVIRONMENT VIA BLOCKADE LABS · OASIS AVATAR ·
+        MODULES &amp; STREAKS SYNC WHEN SIGNED IN ·
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'https://esm.sh/three@0.160.0';
+import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+const OASIS_API = (window.AT_OASIS_API_URL || 'https://api.oasisweb4.com').replace(/\/$/, '');
+const JWT_KEY = 'antitrader_oasis_jwt';
+const DEMO_SESSION_KEY = 'at_dashboard_allow_demo';
+
+/** Fallback if no default-skybox.json and no ?skyboxUrl (public equirect). */
+const FALLBACK_EQUIRECT = 'https://threejs.org/examples/textures/equirectangular/blouberg_sunrise_2k.jpg';
+
+const LEVELS = [
+  { id: 'explorer', label: 'Explorer', min: 0, next: 40 },
+  { id: 'practitioner', label: 'Practitioner', min: 40, next: 120 },
+  { id: 'strategist', label: 'Strategist', min: 120, next: 300 },
+  { id: 'mentor', label: 'Mentor', min: 300, next: null },
+];
+
+const PHASES = [
+  { key: 'p1', label: 'Foundations' },
+  { key: 'p2', label: 'Markets & instruments' },
+  { key: 'p3', label: 'Risk & psychology' },
+  { key: 'p4', label: 'Live simulation' },
+];
+
+function getPageParams() {
+  const search = window.location.search.slice(1);
+  const hash = window.location.hash.replace(/^#/, '');
+  const hashQuery = hash.includes('?') ? hash.split('?').pop() : hash;
+  const merged = new URLSearchParams(search);
+  const fromHash = new URLSearchParams(hashQuery);
+  for (const [k, v] of fromHash.entries()) merged.set(k, v);
+  return merged;
+}
+const params = getPageParams();
+
+const loadBar = document.getElementById('load-bar');
+const loadStatus = document.getElementById('load-status');
+function setLoad(pct, msg) {
+  loadBar.style.width = pct + '%';
+  if (msg) loadStatus.textContent = msg;
+}
+
+function tickClock() {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  document.getElementById('tb-clock').textContent = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+function readJwt() {
+  try { return localStorage.getItem(JWT_KEY) || ''; } catch { return ''; }
+}
+function jwtFromAuthJson(authJson) {
+  const result = authJson?.result ?? authJson?.Result ?? authJson;
+  const inner = result?.result ?? result?.Result ?? result;
+  return inner?.jwtToken ?? inner?.JwtToken ?? null;
+}
+
+async function unwrapOasis(res) {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || res.statusText);
+  return data.result?.result ?? data.result ?? data;
+}
+
+/** Try generated asset next to this page, then query / OASIS holon. */
+async function resolveSkyboxImageUrl() {
+  const direct = (params.get('skyboxUrl') || (window.AT_SKYBOX_URL && String(window.AT_SKYBOX_URL)) || '').trim();
+  if (direct) return direct;
+
+  try {
+    const r = await fetch(new URL('default-skybox.json', import.meta.url).href, { cache: 'no-store' });
+    if (r.ok) {
+      const j = await r.json();
+      const u = (j.file_url || '').trim();
+      if (u) return u;
+    }
+  } catch { /* file:// or missing */ }
+
+  const worldId = params.get('worldId');
+  if (!worldId) return FALLBACK_EQUIRECT;
+
+  const apiUrl = (params.get('apiUrl') || OASIS_API).replace(/\/$/, '');
+  let token = readJwt();
+  const username = params.get('username');
+  const password = params.get('password');
+
+  if (!token && username && password) {
+    const authRes = await fetch(`${apiUrl}/api/avatar/authenticate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const authJson = await authRes.json().catch(() => ({}));
+    if (!authRes.ok) throw new Error(authJson.message || `Auth failed: ${authRes.status}`);
+    token = jwtFromAuthJson(authJson);
+    if (!token) throw new Error('No JWT');
+  }
+
+  const opts = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+  const loadRes = await fetch(`${apiUrl}/api/data/load-holon/${encodeURIComponent(worldId)}`, opts);
+  const loadJson = await loadRes.json().catch(() => ({}));
+  if (!loadRes.ok) throw new Error(loadJson.message || `load-holon: ${loadRes.status}`);
+  if (loadJson?.isError) throw new Error(loadJson?.message || 'load-holon error');
+  const holon = loadJson?.result ?? loadJson?.Result ?? loadJson;
+  const meta = holon?.metaData ?? holon?.MetaData ?? {};
+  const url = meta?.sceneAssetUrl ?? meta?.SceneAssetUrl ?? '';
+  return url ? String(url) : FALLBACK_EQUIRECT;
+}
+
+function levelFromHours(h) {
+  for (let i = LEVELS.length - 1; i >= 0; i--) {
+    if (h >= LEVELS[i].min) return LEVELS[i];
+  }
+  return LEVELS[0];
+}
+
+function mapStudentFromOasis(detail) {
+  if (!detail || typeof detail !== 'object') return null;
+  const first = detail.firstName || detail.FirstName || '';
+  const last = detail.lastName || detail.LastName || '';
+  const name = `${first} ${last}`.trim() || detail.username || 'Student';
+  const id = detail.id || detail.avatarId || '';
+  const rawMeta = detail.metadata ?? detail.Metadata ?? detail.metaData;
+  const meta = rawMeta && typeof rawMeta === 'object' ? rawMeta : {};
+  const school = meta.atSchool && typeof meta.atSchool === 'object' ? meta.atSchool : meta;
+
+  const studyHours = Number(school.studyHours ?? school.study_hours ?? detail.karma ?? 42) || 0;
+  const modulesDone = Number(school.modulesDone ?? school.modules_done ?? 3) || 0;
+  const streak = Number(school.streak ?? 5) || 0;
+  const journal = Number(school.journalEntries ?? 12) || 0;
+  const phaseIdx = Math.min(PHASES.length - 1, Math.floor(modulesDone / 2));
+  const lvl = levelFromHours(studyHours);
+  const idx = LEVELS.findIndex((x) => x.id === lvl.id);
+  const nextTier = LEVELS[idx + 1];
+  let tierProg = 100;
+  if (nextTier) {
+    const span = Math.max(1, nextTier.min - lvl.min);
+    const pos = Math.max(0, studyHours - lvl.min);
+    tierProg = Math.min(100, Math.round((pos / span) * 100));
+  }
+  const chapterProg = Math.min(100, Math.round(((phaseIdx + 0.5) / PHASES.length) * 100));
+
+  return {
+    name,
+    avatarId: id,
+    schoolId: school.schoolId || `AT-${(id || 'DEMO').toString().slice(0, 8).toUpperCase()}`,
+    memberSince: (detail.createdDate || school.memberSince || '—').toString().slice(0, 10),
+    lastCheckin: school.lastActivity || 'Today · lab',
+    tier: lvl.id,
+    studyHours,
+    modulesDone,
+    streak,
+    journal,
+    phase: PHASES[phaseIdx],
+    phaseIdx,
+    tierProg,
+    chapterProg,
+    assignmentsDue: school.assignmentsDue ?? '2',
+    labSessions: school.labSessions ?? '6',
+    stamps: school.stamps?.length ? school.stamps : ['risk', 'journal'],
+    quests: school.quests?.length ? school.quests : defaultQuests(),
+    activity: school.activity?.length ? school.activity : defaultActivity(),
+    source: 'oasis',
+  };
+}
+
+function defaultQuests() {
+  return [
+    { id: 'q1', name: 'Position sizing — live checklist', meta: 'Risk lab · module 2', done: false, active: true, reward: '+2h' },
+    { id: 'q2', name: 'Psychology: loss aversion journal', meta: '3 entries this week', done: false, active: false, reward: '+badge' },
+    { id: 'q3', name: 'Sim week — drawdown cap', meta: 'Sandbox · AntiTrader', done: true, active: false, reward: '✓' },
+  ];
+}
+
+function defaultActivity() {
+  return [
+    { ts: '10:42', msg: 'Risk module quiz submitted', pts: '+1 mod' },
+    { ts: 'Yesterday', msg: 'Office hours · execution Q&A', pts: '' },
+    { ts: 'Mon', msg: 'Enrolled · AntiTrader School', pts: '🎓' },
+  ];
+}
+
+function mockStudent() {
+  return {
+    name: 'Demo Student',
+    avatarId: 'demo-at-001',
+    schoolId: 'AT-DEMO-01',
+    memberSince: '2026-01',
+    lastCheckin: 'Today · morning drill',
+    tier: 'practitioner',
+    studyHours: 56,
+    modulesDone: 7,
+    streak: 12,
+    journal: 28,
+    phase: PHASES[2],
+    phaseIdx: 2,
+    tierProg: 40,
+    chapterProg: 62,
+    assignmentsDue: '2',
+    labSessions: '8',
+    stamps: ['risk', 'journal', 'sim'],
+    quests: defaultQuests(),
+    activity: defaultActivity(),
+    source: 'mock',
+  };
+}
+
+async function fetchStudent() {
+  const jwt = readJwt();
+  if (!jwt) return null;
+  const headers = { Authorization: `Bearer ${jwt}` };
+  try {
+    const res = await fetch(`${OASIS_API}/api/avatar/get-logged-in-avatar`, { headers });
+    const logged = await unwrapOasis(res);
+    const id = logged?.id || logged?.avatarId || logged?.Id;
+    if (!id) return mapStudentFromOasis(logged);
+    const res2 = await fetch(`${OASIS_API}/api/avatar/get-avatar-detail-by-id/${encodeURIComponent(id)}`, { headers });
+    const detail = await unwrapOasis(res2);
+    return mapStudentFromOasis(detail);
+  } catch (e) {
+    console.warn('AntiTrader dashboard: OASIS fetch failed', e);
+    return null;
+  }
+}
+
+function renderStudent(s) {
+  const initials = (s.name || '?').split(/\s+/).filter(Boolean).map((w) => w[0]).join('').slice(0, 2).toUpperCase() || '?';
+  document.getElementById('av-initials').textContent = initials;
+  document.getElementById('av-name').textContent = s.name;
+  document.getElementById('member-since').textContent = s.memberSince || '—';
+  document.getElementById('passport-id').textContent = (s.avatarId || 'DEMO').toString().slice(0, 14).toUpperCase();
+  document.getElementById('school-id-tag').textContent = s.schoolId || 'Student ID';
+  document.getElementById('current-chapter').textContent = s.phase?.label || '—';
+  document.getElementById('last-checkin').textContent = s.lastCheckin || '—';
+  document.getElementById('member-status').textContent = s.source === 'oasis' ? 'LINKED' : 'DEMO';
+
+  const tier = (s.tier || 'explorer').toLowerCase();
+  const td = LEVELS.find((x) => x.id === tier) || LEVELS[0];
+  const nextL = LEVELS[LEVELS.indexOf(td) + 1];
+  const lvlR = levelFromHours(s.studyHours);
+  const nextTierR = LEVELS[LEVELS.findIndex((x) => x.id === lvlR.id) + 1];
+  let tierProgR = 100;
+  if (nextTierR) {
+    const span = Math.max(1, nextTierR.min - lvlR.min);
+    const pos = Math.max(0, s.studyHours - lvlR.min);
+    tierProgR = Math.min(100, Math.round((pos / span) * 100));
+  }
+  document.getElementById('tier-label').textContent = td.label;
+  document.getElementById('tier-label').className = `val badge ${td.id}`;
+  document.getElementById('tier-display').textContent = td.label;
+  document.getElementById('tier-display').className = `tier-badge ${td.id}`;
+
+  if (nextL) {
+    document.getElementById('hours-to-next').textContent = `${s.studyHours} / ${nextL.min} hrs · ${nextL.label}`;
+    document.getElementById('tier-bar').style.width = tierProgR + '%';
+    document.getElementById('tier-pct').textContent = tierProgR + '%';
+  } else {
+    document.getElementById('hours-to-next').textContent = 'Max level';
+    document.getElementById('tier-bar').style.width = '100%';
+    document.getElementById('tier-pct').textContent = '100%';
+  }
+
+  document.getElementById('chapter-pct').textContent = s.chapterProg + '%';
+  document.getElementById('chapter-bar').style.width = s.chapterProg + '%';
+  document.getElementById('chapter-bar-pct').textContent = s.chapterProg + '%';
+
+  document.getElementById('c-modules').textContent = s.modulesDone;
+  document.getElementById('c-hours').textContent = s.studyHours;
+  document.getElementById('c-streak').textContent = s.streak;
+  document.getElementById('c-journal').textContent = s.journal;
+
+  const maxH = 300;
+  const studyPct = Math.min(1, s.studyHours / maxH);
+  const arc = document.getElementById('study-arc');
+  arc.style.strokeDashoffset = String(251.2 * (1 - studyPct));
+  document.getElementById('study-val').textContent = String(s.studyHours);
+
+  document.getElementById('assignments-due').textContent = s.assignmentsDue;
+  document.getElementById('lab-sessions').textContent = s.labSessions;
+
+  if (nextL) {
+    const needH = nextL.min;
+    document.getElementById('next-milestone').textContent = `${needH} hrs → ${nextL.label}`;
+    document.getElementById('milestone-bar').style.width = Math.min(100, (s.studyHours / needH) * 100) + '%';
+    document.getElementById('milestone-pct').textContent = `${s.studyHours}/${needH} hrs`;
+  } else {
+    document.getElementById('next-milestone').textContent = 'Track complete · stay engaged';
+    document.getElementById('milestone-bar').style.width = '100%';
+    document.getElementById('milestone-pct').textContent = '—';
+  }
+
+  const stampEl = document.getElementById('stamps');
+  stampEl.innerHTML = '';
+  const all = ['risk', 'journal', 'sim', 'macro', 'live'];
+  const earned = new Set(s.stamps || []);
+  all.forEach((k) => {
+    const div = document.createElement('div');
+    div.className = 'stamp' + (earned.has(k) ? ' earned' : ' locked');
+    div.textContent = k.toUpperCase();
+    stampEl.appendChild(div);
+  });
+
+  const qEl = document.getElementById('quest-list');
+  qEl.innerHTML = '';
+  (s.quests || []).forEach((q) => {
+    const row = document.createElement('div');
+    row.className = 'quest-item';
+    const dot = document.createElement('div');
+    dot.className = 'quest-dot' + (q.done ? ' done' : q.active ? ' active' : '');
+    row.appendChild(dot);
+    const mid = document.createElement('div');
+    mid.className = 'min-w-0';
+    mid.innerHTML = `<div class="quest-name">${escapeHtml(q.name)}</div><div class="quest-meta">${escapeHtml(q.meta)}</div>`;
+    row.appendChild(mid);
+    const rw = document.createElement('div');
+    rw.className = 'quest-reward';
+    rw.textContent = q.reward || '';
+    row.appendChild(rw);
+    qEl.appendChild(row);
+  });
+
+  const feed = document.getElementById('activity-feed');
+  feed.innerHTML = '';
+  (s.activity || []).forEach((a) => {
+    const div = document.createElement('div');
+    div.className = 'feed-item';
+    div.innerHTML = `<span class="feed-ts">${escapeHtml(a.ts)}</span><span class="feed-msg">${escapeHtml(a.msg)}</span><span class="feed-pts">${escapeHtml(a.pts || '')}</span>`;
+    feed.appendChild(div);
+  });
+  document.getElementById('feed-count').textContent = `${(s.activity || []).length} events`;
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+async function loadEquirectTextureFromUrl(url, onProgress) {
+  const res = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'force-cache' });
+  if (!res.ok) throw new Error(`Skybox HTTP ${res.status}`);
+  const total = parseInt(res.headers.get('Content-Length') || '0', 10) || 0;
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No body');
+  const chunks = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.byteLength;
+    if (total && onProgress) onProgress(Math.min(100, Math.round((received / total) * 100)));
+  }
+  const blob = new Blob(chunks, { type: res.headers.get('Content-Type') || 'image/jpeg' });
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    return await new Promise((resolve, reject) => {
+      new THREE.TextureLoader().load(objectUrl, resolve, undefined, reject);
+    });
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function startViewer(imageUrl) {
+  const hintEl = document.getElementById('skybox-missing-hint');
+  const container = document.getElementById('viewport');
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x04060c);
+  const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+  camera.position.set(0, 0, 0.1);
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(container.clientWidth, container.clientHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  container.appendChild(renderer.domElement);
+
+  const reveal = () => {
+    setLoad(100, 'Ready');
+    setTimeout(() => {
+      const loading = document.getElementById('loading');
+      loading.classList.add('fade-out');
+      setTimeout(() => { loading.style.display = 'none'; }, 850);
+    }, 350);
+  };
+
+  const applyTexture = (tex) => {
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
+    scene.background = tex;
+    hintEl.classList.add('hidden');
+    reveal();
+  };
+
+  const fail = () => {
+    hintEl.classList.remove('hidden');
+    reveal();
+  };
+
+  if (imageUrl) {
+    setLoad(70, 'Downloading skybox…');
+    loadEquirectTextureFromUrl(imageUrl, (pct) => setLoad(70 + Math.floor(pct * 0.25), `Skybox ${pct}%`))
+      .then(applyTexture)
+      .catch(() => {
+        new THREE.TextureLoader().setCrossOrigin('anonymous').load(imageUrl, applyTexture, undefined, fail);
+      });
+  } else fail();
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.rotateSpeed = 0.45;
+  controls.minDistance = 0.01;
+  controls.maxDistance = 0.5;
+  controls.target.set(0, 0, 0);
+
+  let autoRotate = true;
+  let autoAngle = 0;
+  renderer.domElement.addEventListener('pointerdown', () => {
+    autoRotate = false;
+    document.getElementById('drag-hint').classList.add('hide');
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = container.clientWidth / container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth, container.clientHeight);
+  });
+
+  function animate() {
+    requestAnimationFrame(animate);
+    if (autoRotate) {
+      autoAngle += 0.0001;
+      camera.position.x = Math.sin(autoAngle) * 0.09;
+      camera.position.z = Math.cos(autoAngle) * 0.09;
+      camera.lookAt(0, 0, 0);
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+  setTimeout(() => document.getElementById('drag-hint').classList.add('hide'), 6500);
+}
+
+function shouldSkipAuthGate() {
+  return params.get('demo') === '1' || sessionStorage.getItem(DEMO_SESSION_KEY) === '1' || readJwt();
+}
+
+function showGate() { document.getElementById('passport-auth-gate').classList.remove('hidden'); }
+function hideGate() { document.getElementById('passport-auth-gate').classList.add('hidden'); }
+
+function wireOasisAuthPanel() {
+  const jwt = readJwt();
+  const signed = document.getElementById('oasis-auth-signed');
+  const form = document.getElementById('oasis-auth-form');
+  if (jwt) {
+    signed.style.display = 'block';
+    form.style.display = 'none';
+  } else {
+    signed.style.display = 'none';
+    form.style.display = 'block';
+  }
+  document.getElementById('oasis-auth-signout').onclick = () => {
+    localStorage.removeItem(JWT_KEY);
+    sessionStorage.removeItem(DEMO_SESSION_KEY);
+    location.reload();
+  };
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const u = document.getElementById('oasis-auth-user').value;
+    const p = document.getElementById('oasis-auth-pass').value;
+    const msg = document.getElementById('oasis-auth-msg');
+    msg.textContent = '';
+    try {
+      const r = await fetch(`${OASIS_API}/api/avatar/authenticate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, password: p }),
+      });
+      const j = await r.json();
+      const token = jwtFromAuthJson(j);
+      if (!token) throw new Error(j.message || 'No JWT');
+      localStorage.setItem(JWT_KEY, token);
+      location.reload();
+    } catch (err) {
+      msg.className = 'oasis-auth-msg err';
+      msg.textContent = err?.message || 'Sign-in failed';
+    }
+  };
+}
+
+document.getElementById('tb-oasis-signin').onclick = () => {
+  document.getElementById('oasis-auth-panel').scrollIntoView({ behavior: 'smooth' });
+};
+
+async function enterDashboard() {
+  hideGate();
+  setLoad(10, 'Loading profile…');
+  let student = await fetchStudent();
+  if (!student) student = mockStudent();
+  setLoad(28, 'Rendering dashboard…');
+  renderStudent(student);
+  wireOasisAuthPanel();
+
+  setLoad(45, 'Resolving skybox…');
+  let sky = FALLBACK_EQUIRECT;
+  try {
+    sky = await resolveSkyboxImageUrl();
+  } catch (e) {
+    console.warn('Skybox resolve:', e);
+    loadStatus.style.color = '#e8a090';
+    sky = FALLBACK_EQUIRECT;
+  }
+
+  setLoad(62, 'Starting 3D view…');
+  startViewer(sky);
+}
+
+document.getElementById('gate-auth-form').onsubmit = async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById('gate-auth-msg');
+  msg.textContent = '';
+  try {
+    const r = await fetch(`${OASIS_API}/api/avatar/authenticate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: document.getElementById('gate-auth-user').value,
+        password: document.getElementById('gate-auth-pass').value,
+      }),
+    });
+    const j = await r.json();
+    const token = jwtFromAuthJson(j);
+    if (!token) throw new Error(j.message || 'No JWT');
+    localStorage.setItem(JWT_KEY, token);
+    sessionStorage.removeItem(DEMO_SESSION_KEY);
+    await enterDashboard();
+  } catch (err) {
+    msg.className = 'oasis-auth-msg err';
+    msg.textContent = err?.message || 'Failed';
+  }
+};
+
+document.getElementById('gate-demo-btn').onclick = () => {
+  sessionStorage.setItem(DEMO_SESSION_KEY, '1');
+  enterDashboard();
+};
+
+(async () => {
+  if (!shouldSkipAuthGate()) {
+    document.getElementById('loading').style.display = 'none';
+    showGate();
+    return;
+  }
+  document.getElementById('loading').style.display = 'flex';
+  await enterDashboard();
+})();
+</script>
+</body>
+</html>

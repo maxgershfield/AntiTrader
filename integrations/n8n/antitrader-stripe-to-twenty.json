@@ -1,0 +1,60 @@
+{
+  "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111010300",
+  "name": "AntiTrader Stripe checkout → Twenty Person",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-bridge",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111030101",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        480
+      ],
+      "webhookId": "a1b2c3d4-1a2b-3c4d-5e6f-000000000003"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "async function main() {\n  const raw = String($env.TWENTY_INTERNAL_BASE || '');\n  const base = raw.endsWith('/') ? raw.slice(0, -1) : raw;\n  const token = $env.TWENTY_API_KEY;\n  if (!base || !token) throw new Error('TWENTY_INTERNAL_BASE and TWENTY_API_KEY must be set');\n  const b = $input.first().json;\n  if (b.stripeType !== 'checkout.session.completed') return [];\n  const sess = b.payload || {};\n  const email = (sess.customer_email || (sess.customer_details && sess.customer_details.email) || '').trim();\n  if (!email) return [];\n  const nameStr = (sess.customer_details && sess.customer_details.name ? String(sess.customer_details.name) : '').trim();\n  let firstName = 'Customer';\n  let lastName = 'Stripe';\n  if (nameStr) {\n    const parts = nameStr.split(/\\s+/);\n    firstName = parts[0] || firstName;\n    lastName = parts.slice(1).join(' ') || lastName;\n  }\n  const phone = (sess.customer_details && sess.customer_details.phone ? String(sess.customer_details.phone) : '').trim();\n  const sessionId = sess.id ? String(sess.id) : '';\n  const evt = b.stripeEventId ? String(b.stripeEventId) : '';\n  const stripeLine = ('Stripe | checkout.session.completed | session=' + sessionId + (evt ? ' | evt=' + evt : '')).slice(0, 500);\n  const authHeaders = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };\n  const filter = 'emails.primaryEmail[eq]:' + email;\n  const url = base + '/rest/people?filter=' + encodeURIComponent(filter) + '&limit=1';\n  const getRes = await this.helpers.httpRequest({ method: 'GET', url, headers: authHeaders, json: true });\n  const people = getRes && getRes.data && Array.isArray(getRes.data.people) ? getRes.data.people : [];\n  const existing = people[0] || null;\n  if (existing && existing.id) {\n    const prior = String(existing.jobTitle || '').trim();\n    if (sessionId && prior.includes('session=' + sessionId)) {\n      return [{ json: { ok: true, action: 'skipped_idempotent', personId: existing.id, stripeEventId: evt } }];\n    }\n    const mergedJobTitle = (prior ? prior + ' | ' + stripeLine : stripeLine).slice(0, 500);\n    const patchBody = { jobTitle: mergedJobTitle };\n    if (phone && !(existing.phones && existing.phones.primaryPhoneNumber)) {\n      patchBody.phones = {\n        primaryPhoneNumber: phone,\n        primaryPhoneCountryCode: '',\n        primaryPhoneCallingCode: '',\n        additionalPhones: null,\n      };\n    }\n    const patchRes = await this.helpers.httpRequest({\n      method: 'PATCH',\n      url: base + '/rest/people/' + existing.id,\n      headers: authHeaders,\n      body: patchBody,\n      json: true,\n    });\n    return [{ json: { ok: true, action: 'updated', personId: existing.id, twenty: patchRes } }];\n  }\n  const twentyBody = {\n    name: { firstName, lastName },\n    emails: { primaryEmail: email, additionalEmails: null },\n    jobTitle: stripeLine.slice(0, 500),\n  };\n  if (phone) {\n    twentyBody.phones = {\n      primaryPhoneNumber: phone,\n      primaryPhoneCountryCode: '',\n      primaryPhoneCallingCode: '',\n      additionalPhones: null,\n    };\n  }\n  const postRes = await this.helpers.httpRequest({\n    method: 'POST',\n    url: base + '/rest/people',\n    headers: authHeaders,\n    body: twentyBody,\n    json: true,\n  });\n  return [{ json: { ok: true, action: 'created', twenty: postRes } }];\n}\nreturn await main.call(this);\n"
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111030102",
+      "name": "Find or create Person",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        480
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Find or create Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

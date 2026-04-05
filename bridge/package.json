@@ -1,0 +1,16 @@
+{
+  "name": "antitrader-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Webhook bridge: Meta WhatsApp + Twilio SMS → n8n (verified, idempotency-friendly)",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "stripe": "^17.4.0",
+    "twilio": "^5.4.0"
+  }
+}

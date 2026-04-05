@@ -1,0 +1,54 @@
+{
+  "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111010400",
+  "name": "AntiTrader sales journey → Twenty (find / update / create)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sales-journey",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111040101",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "a1b2c3d4-1a2b-3c4d-5e6f-000000000004"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "async function main() {\n  const base = String($env.TWENTY_INTERNAL_BASE || '').replace(/\\/$/, '');\n  const token = $env.TWENTY_API_KEY;\n  if (!base || !token) {\n    throw new Error('TWENTY_INTERNAL_BASE and TWENTY_API_KEY must be set for n8n');\n  }\n  const b = $input.first().json;\n  const p = b.payload || {};\n  const email = String(p.email || '').trim();\n  const phoneE164 = String(p.phoneE164 || '').trim();\n  const journeyStage = String(b.journeyStage || 'unknown').trim();\n  const source = String(b.source || 'manual').trim();\n  if (!email && !phoneE164) {\n    return [];\n  }\n  const ext = p.externalId != null && p.externalId !== '' ? String(p.externalId) : '';\n  const jobTitleLine = ext\n    ? `Journey | ${journeyStage} | ${source} | ext:${ext}`\n    : `Journey | ${journeyStage} | ${source}`;\n  const authHeaders = {\n    Authorization: `Bearer ${token}`,\n    'Content-Type': 'application/json',\n  };\n  async function findByEmail() {\n    if (!email) return null;\n    const filter = `emails.primaryEmail[eq]:${email}`;\n    const url = `${base}/rest/people?filter=${encodeURIComponent(filter)}&limit=1`;\n    const r = await this.helpers.httpRequest({ method: 'GET', url, headers: authHeaders, json: true });\n    const people = r && r.data && Array.isArray(r.data.people) ? r.data.people : [];\n    return people[0] || null;\n  }\n  async function findByPhone() {\n    if (!phoneE164) return null;\n    const filter = `phones.primaryPhoneNumber[eq]:${phoneE164}`;\n    const url = `${base}/rest/people?filter=${encodeURIComponent(filter)}&limit=1`;\n    const r = await this.helpers.httpRequest({ method: 'GET', url, headers: authHeaders, json: true });\n    const people = r && r.data && Array.isArray(r.data.people) ? r.data.people : [];\n    return people[0] || null;\n  }\n  const existing = (await findByEmail.call(this)) || (await findByPhone.call(this));\n  if (existing && existing.id) {\n    const prior = String(existing.jobTitle || '').trim();\n    const mergedJobTitle = prior ? `${prior} | ${jobTitleLine}` : jobTitleLine;\n    const patchUrl = `${base}/rest/people/${existing.id}`;\n    const patchRes = await this.helpers.httpRequest({\n      method: 'PATCH',\n      url: patchUrl,\n      headers: authHeaders,\n      body: { jobTitle: mergedJobTitle },\n      json: true,\n    });\n    return [\n      {\n        json: {\n          ok: true,\n          action: 'updated',\n          personId: existing.id,\n          journeyStage,\n          source,\n          twenty: patchRes,\n        },\n      },\n    ];\n  }\n  const firstName = String(p.firstName || '').trim() || 'Lead';\n  const lastName = String(p.lastName || '').trim() || 'Prospect';\n  const postBody = {\n    name: { firstName, lastName },\n    jobTitle: jobTitleLine,\n  };\n  if (email) {\n    postBody.emails = { primaryEmail: email, additionalEmails: null };\n  }\n  if (phoneE164) {\n    postBody.phones = {\n      primaryPhoneNumber: phoneE164,\n      primaryPhoneCountryCode: '',\n      primaryPhoneCallingCode: '',\n      additionalPhones: null,\n    };\n  }\n  const postRes = await this.helpers.httpRequest({\n    method: 'POST',\n    url: `${base}/rest/people`,\n    headers: authHeaders,\n    body: postBody,\n    json: true,\n  });\n  const data = postRes && postRes.data ? postRes.data : postRes;\n  const newId = data && (data.id || (data.person && data.person.id));\n  return [\n    {\n      json: {\n        ok: true,\n        action: 'created',\n        personId: newId || null,\n        journeyStage,\n        source,\n        twenty: postRes,\n      },\n    },\n  ];\n}\nreturn await main.call(this);\n"
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111040102",
+      "name": "Find update or create Person",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Find update or create Person",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

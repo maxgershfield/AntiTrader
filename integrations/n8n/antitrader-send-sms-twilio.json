@@ -1,0 +1,60 @@
+{
+  "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111010500",
+  "name": "AntiTrader outbound SMS (Twilio)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "antitrader-send-sms",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111050101",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        520
+      ],
+      "webhookId": "a1b2c3d4-1a2b-3c4d-5e6f-000000000005"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "async function main() {\n  const expected = $env.N8N_ANTITRADER_OUTBOUND_SECRET;\n  if (!expected) throw new Error('N8N_ANTITRADER_OUTBOUND_SECRET must be set on n8n');\n  const raw = $input.first().json;\n  const j = raw.body !== undefined && typeof raw.body === 'object' && !Array.isArray(raw.body) && (raw.body.toE164 !== undefined || raw.body.webhookSecret !== undefined || raw.body.message !== undefined || raw.body.body !== undefined)\n    ? raw.body\n    : raw;\n  const hdrs = raw.headers || {};\n  const secretHdr = hdrs['x-antitrader-webhook-secret'] || hdrs['X-Antitrader-Webhook-Secret'];\n  const secret = j.webhookSecret || secretHdr;\n  if (secret !== expected) throw new Error('unauthorized');\n  const toE164 = String(j.toE164 || j.to || '').trim();\n  const msg = String(j.message || j.body || '').trim();\n  const sid = $env.TWILIO_ACCOUNT_SID;\n  const tok = $env.TWILIO_AUTH_TOKEN;\n  const from = $env.TWILIO_MESSAGING_FROM;\n  if (!toE164 || !msg) throw new Error('toE164 and message (or body) are required');\n  if (!sid || !tok || !from) throw new Error('TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_MESSAGING_FROM must be set on n8n');\n  const form = new URLSearchParams();\n  form.set('To', toE164);\n  form.set('From', from);\n  form.set('Body', msg);\n  const auth = Buffer.from(sid + ':' + tok).toString('base64');\n  const r = await this.helpers.httpRequest({\n    method: 'POST',\n    url: 'https://api.twilio.com/2010-04-01/Accounts/' + sid + '/Messages.json',\n    headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },\n    body: form.toString(),\n    json: true,\n  });\n  return [{ json: { ok: true, twilio: r } }];\n}\nreturn await main.call(this);\n"
+      },
+      "id": "a1b2c3d4-1a2b-3c4d-5e6f-111111050102",
+      "name": "Send via Twilio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send via Twilio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "active": false,
+  "tags": []
+}

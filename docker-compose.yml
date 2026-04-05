@@ -1,0 +1,157 @@
+# AntiTrader local stack: Twenty CRM + n8n + webhook bridge
+# Twenty upstream: https://github.com/twentyhq/twenty/blob/main/packages/twenty-docker/docker-compose.yml
+
+name: antitrader
+
+services:
+  twenty-db:
+    image: postgres:16
+    volumes:
+      - twenty-db-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${PG_DATABASE_NAME:-default}
+      POSTGRES_PASSWORD: ${PG_DATABASE_PASSWORD:-postgres}
+      POSTGRES_USER: ${PG_DATABASE_USER:-postgres}
+    healthcheck:
+      test: pg_isready -U ${PG_DATABASE_USER:-postgres} -h localhost -d postgres
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - antitrader
+
+  twenty-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory-policy", "noeviction"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - antitrader
+
+  twenty-server:
+    image: twentycrm/twenty:${TWENTY_TAG:-latest}
+    volumes:
+      - twenty-server-data:/app/packages/twenty-server/.local-storage
+    ports:
+      - "${TWENTY_HTTP_PORT:-3020}:3000"
+    environment:
+      NODE_PORT: 3000
+      PG_DATABASE_URL: postgres://${PG_DATABASE_USER:-postgres}:${PG_DATABASE_PASSWORD:-postgres}@twenty-db:${PG_DATABASE_PORT:-5432}/${PG_DATABASE_NAME:-default}
+      SERVER_URL: ${SERVER_URL:-http://localhost:3020}
+      REDIS_URL: ${REDIS_URL:-redis://twenty-redis:6379}
+      DISABLE_DB_MIGRATIONS: ${DISABLE_DB_MIGRATIONS:-}
+      DISABLE_CRON_JOBS_REGISTRATION: ${DISABLE_CRON_JOBS_REGISTRATION:-}
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-}
+      STORAGE_S3_NAME: ${STORAGE_S3_NAME:-}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      APP_SECRET: ${APP_SECRET:-replace_me_with_a_random_string}
+    depends_on:
+      twenty-db:
+        condition: service_healthy
+      twenty-redis:
+        condition: service_healthy
+    healthcheck:
+      test: curl --fail http://localhost:3000/healthz
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      - antitrader
+
+  twenty-worker:
+    image: twentycrm/twenty:${TWENTY_TAG:-latest}
+    volumes:
+      - twenty-server-data:/app/packages/twenty-server/.local-storage
+    command: ["yarn", "worker:prod"]
+    environment:
+      PG_DATABASE_URL: postgres://${PG_DATABASE_USER:-postgres}:${PG_DATABASE_PASSWORD:-postgres}@twenty-db:${PG_DATABASE_PORT:-5432}/${PG_DATABASE_NAME:-default}
+      SERVER_URL: ${SERVER_URL:-http://localhost:3020}
+      REDIS_URL: ${REDIS_URL:-redis://twenty-redis:6379}
+      DISABLE_DB_MIGRATIONS: "true"
+      DISABLE_CRON_JOBS_REGISTRATION: "true"
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      STORAGE_S3_REGION: ${STORAGE_S3_REGION:-}
+      STORAGE_S3_NAME: ${STORAGE_S3_NAME:-}
+      STORAGE_S3_ENDPOINT: ${STORAGE_S3_ENDPOINT:-}
+      APP_SECRET: ${APP_SECRET:-replace_me_with_a_random_string}
+    depends_on:
+      twenty-db:
+        condition: service_healthy
+      twenty-server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - antitrader
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:${N8N_TAG:-latest}
+    ports:
+      - "${N8N_HTTP_PORT:-5678}:5678"
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change_me_min_32_chars_for_n8n_prod}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+      # https://docs.n8n.io/hosting/configuration/environment-variables/licenses/
+      N8N_LICENSE_ACTIVATION_KEY: ${N8N_LICENSE_ACTIVATION_KEY:-}
+      # Allow $env in HTTP Request / Code nodes (default can block; workflow uses $env.TWENTY_*)
+      # https://docs.n8n.io/hosting/configuration/environment-variables/security/
+      N8N_BLOCK_ENV_ACCESS_IN_NODE: "false"
+      # Used by AntiTrader workflow expressions ($env.TWENTY_*)
+      TWENTY_INTERNAL_BASE: ${TWENTY_INTERNAL_BASE:-http://twenty-server:3000}
+      TWENTY_API_KEY: ${TWENTY_API_KEY:-}
+      # Outbound SMS workflow (antitrader-send-sms-twilio.json): Twilio REST + shared secret
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_MESSAGING_FROM: ${TWILIO_MESSAGING_FROM:-}
+      N8N_ANTITRADER_OUTBOUND_SECRET: ${N8N_ANTITRADER_OUTBOUND_SECRET:-}
+      # Outbound WhatsApp template (antitrader-send-whatsapp-template.json): Graph API
+      WHATSAPP_CLOUD_ACCESS_TOKEN: ${WHATSAPP_CLOUD_ACCESS_TOKEN:-}
+      WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WHATSAPP_GRAPH_API_VERSION: ${WHATSAPP_GRAPH_API_VERSION:-v21.0}
+    volumes:
+      - n8n-data:/home/node/.n8n
+    restart: unless-stopped
+    networks:
+      - antitrader
+
+  antitrader-bridge:
+    build:
+      context: ./bridge
+      dockerfile: Dockerfile
+    ports:
+      - "${BRIDGE_HTTP_PORT:-3099}:3099"
+    environment:
+      BRIDGE_PORT: 3099
+      META_APP_SECRET: ${META_APP_SECRET:-}
+      META_VERIFY_TOKEN: ${META_VERIFY_TOKEN:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_WEBHOOK_PUBLIC_URL: ${TWILIO_WEBHOOK_PUBLIC_URL:-}
+      N8N_FORWARD_WEBHOOK_URL: ${N8N_FORWARD_WEBHOOK_URL:-}
+      N8N_FUNNEL_WEBHOOK_URL: ${N8N_FUNNEL_WEBHOOK_URL:-}
+      N8N_STRIPE_WEBHOOK_URL: ${N8N_STRIPE_WEBHOOK_URL:-}
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    restart: unless-stopped
+    networks:
+      - antitrader
+
+volumes:
+  twenty-db-data:
+  twenty-server-data:
+  n8n-data:
+
+networks:
+  antitrader:
+    driver: bridge
