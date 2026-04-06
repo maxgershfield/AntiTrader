@@ -6,6 +6,8 @@ CRM + funnel stack (Twenty + n8n + webhook bridge) aligned with `DESIGN_PLAN.md`
 
 **Start here:** **[SETUP_STEPS.md](./SETUP_STEPS.md)** — first-time install.
 
+**Client demo (SMS + WhatsApp + sales):** **[docs/DEMO_MIKE.md](./docs/DEMO_MIKE.md)** — short script for a live walkthrough.
+
 **Ongoing:** **[OPERATOR_CHECKLIST.md](./OPERATOR_CHECKLIST.md)** — what’s already in the repo vs **your** steps (Twenty, n8n, Twilio/ngrok, Meta, STAR).
 
 **Channels (Twilio + Meta → bridge → n8n):** **[CHANNELS_SETUP.md](./CHANNELS_SETUP.md)**.
@@ -79,6 +81,7 @@ Use **`docs/GAP_ANALYSIS.md`** for the **full phased plan** (Phases 0–6), exit
 AntiTrader/
 ├── DESIGN_PLAN.md
 ├── docs/
+│   ├── DEMO_MIKE.md         # Client demo script: SMS + WhatsApp + sales flow
 │   ├── GAP_ANALYSIS.md      # Have vs need; phased build blueprint
 │   └── MESSAGING_STACK.md
 ├── README.md

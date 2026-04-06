@@ -46,4 +46,4 @@ Open: `http://localhost:8765/student-dashboard.html?demo=1`
 
 - Blockade client: `worldgen-oasis-demo/blockade_client.py`
 - Interop doc: `worldgen-oasis-demo/BLOCKADE_LABS_INTEROP.md`
-- Pulmón reference UI: `Hitchhikers/Pulmon_Verde/portals/public/conservation-passport.html`
+- Pulmón reference UI: `Pulmon_Verde/portals/public/conservation-passport.html`

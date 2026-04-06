@@ -160,6 +160,46 @@ export default function Home() {
         </p>
       </header>
 
+      <section
+        style={{
+          marginBottom: '1.5rem',
+          padding: '1rem 1.15rem',
+          borderRadius: 12,
+          border: '1px solid rgba(212, 168, 75, 0.35)',
+          background: 'rgba(212, 168, 75, 0.06)',
+          maxWidth: 720,
+        }}
+      >
+        <div
+          style={{
+            fontSize: '0.65rem',
+            letterSpacing: '0.14em',
+            textTransform: 'uppercase',
+            color: 'var(--gold)',
+            marginBottom: '0.5rem',
+          }}
+        >
+          Client demo — SMS, WhatsApp, sales flow
+        </div>
+        <ol style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--dim)', fontSize: '0.78rem', lineHeight: 1.65 }}>
+          <li>
+            <strong style={{ color: 'var(--gold2)' }}>Inbound</strong> SMS &amp; WhatsApp → bridge → n8n →{' '}
+            <strong style={{ color: 'var(--moss2)' }}>Twenty</strong> (one contact; history on{' '}
+            <code style={{ color: 'var(--moss2)' }}>jobTitle</code>).
+          </li>
+          <li>
+            <strong style={{ color: 'var(--gold2)' }}>Funnel</strong> / UTM → same CRM (merge by email).
+          </li>
+          <li>
+            <strong style={{ color: 'var(--gold2)' }}>Sales</strong>: opportunity stages in Twenty + optional{' '}
+            <code style={{ color: 'var(--moss2)' }}>sales-journey</code> webhook.
+          </li>
+        </ol>
+        <p style={{ margin: '0.65rem 0 0', fontSize: '0.7rem', color: 'var(--dim)' }}>
+          Step-by-step script: <code style={{ color: 'var(--moss2)' }}>docs/DEMO_MIKE.md</code>
+        </p>
+      </section>
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
         <div style={card}>
           <div style={{ fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dim)', marginBottom: '0.75rem' }}>
