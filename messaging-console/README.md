@@ -1,6 +1,6 @@
-# AntiTrader — messaging console
+# AntiTrader — messaging console (“Start here”)
 
-Operator **home** for the AntiTrader stack: bridge health, links to **n8n** and **Twenty**, same visual language as `student-dashboard/` (moss / gold / void).
+Operator **home** for the AntiTrader stack. The first screen is **Start here**: three plain-language actions — **Deal board** and **People** (deep links into **Twenty**), **Send a message** (scrolls to SMS / WhatsApp). Technical bits (bridge, n8n, demo bullets) sit under **For admins**. Same visual language as `student-dashboard/` (moss / gold / void).
 
 This is **not** a full WhatsApp inbox (that pattern lives in The Union’s `union-messaging` + `union-api`). Here we keep **everything** under the AntiTrader repo and document the split in **`docs/MESSAGING_STACK.md`**.
 
@@ -27,6 +27,9 @@ Open **http://localhost:3102**.
 | `N8N_SEND_WHATSAPP_WEBHOOK_URL` | Optional full URL to the outbound-WhatsApp webhook (overrides `N8N_WEBHOOK_URL` + `/webhook/antitrader-send-whatsapp`). |
 | `MESSAGING_CONSOLE_OPERATOR_PASSWORD` | Optional. If set, the Compose form must include the same value in the operator password field (simple gate; still put the app behind a VPN in production). |
 | `NEXT_PUBLIC_N8N_UI_URL` | Optional. Base URL for n8n UI links (default `http://localhost:5678`). |
+| `NEXT_PUBLIC_TWENTY_UI_URL` | Optional. Twenty app origin for links (default `http://localhost:3020`). |
+| `NEXT_PUBLIC_TWENTY_PATH_OPPORTUNITIES` | Optional. Path for the deal board link (default `/objects/opportunities`). Change if your Twenty version uses a different URL. |
+| `NEXT_PUBLIC_TWENTY_PATH_PEOPLE` | Optional. Path for the people list (default `/objects/people`). |
 
 Import **`antitrader-send-sms-twilio.json`** and **`antitrader-send-whatsapp-template.json`** in n8n; set Twilio + WhatsApp Cloud API env + `N8N_ANTITRADER_OUTBOUND_SECRET` on the n8n container — see **`../integrations/n8n/IMPORT.md`**.
 

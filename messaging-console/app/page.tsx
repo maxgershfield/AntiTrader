@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import { getTwentyPeopleUrl, getTwentyPipelineUrl, getTwentyUiOrigin } from '@/lib/twentyUi'
 
 type HealthPayload = {
   ok: boolean
@@ -31,6 +32,18 @@ const h1: React.CSSProperties = {
   margin: '0 0 0.35rem',
 }
 
+const actionCard: React.CSSProperties = {
+  display: 'block',
+  background: 'linear-gradient(165deg, rgba(61, 143, 154, 0.22) 0%, rgba(6, 12, 22, 0.95) 45%)',
+  border: '1px solid var(--moss-border)',
+  borderRadius: 16,
+  padding: '1.35rem 1.25rem',
+  textDecoration: 'none',
+  color: 'inherit',
+  transition: 'border-color 0.15s ease, transform 0.15s ease',
+  minHeight: 132,
+}
+
 /** Public UI links only — set NEXT_PUBLIC_N8N_UI_URL in .env.local if n8n is not on localhost:5678 */
 const n8nUiBase = (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_N8N_UI_URL) || 'http://localhost:5678'
 
@@ -48,6 +61,10 @@ export default function Home() {
   const [waBodyParamsJson, setWaBodyParamsJson] = useState('')
   const [sendWaBusy, setSendWaBusy] = useState(false)
   const [sendWaResult, setSendWaResult] = useState<SendResult | null>(null)
+
+  const twentyOrigin = getTwentyUiOrigin()
+  const twentyPipelineUrl = getTwentyPipelineUrl()
+  const twentyPeopleUrl = getTwentyPeopleUrl()
 
   useEffect(() => {
     let cancelled = false
@@ -152,53 +169,102 @@ export default function Home() {
         <p style={{ fontSize: '0.6rem', letterSpacing: '0.2em', textTransform: 'uppercase', color: 'var(--dim)', margin: '0 0 0.5rem' }}>
           AntiTrader
         </p>
-        <h1 style={h1}>Messaging console</h1>
-        <p style={{ color: 'var(--dim)', maxWidth: 560, margin: 0, lineHeight: 1.55 }}>
-          Central operator view for this repo&apos;s stack: <strong style={{ color: 'var(--gold2)' }}>bridge</strong> ingress,{' '}
-          <strong style={{ color: 'var(--gold2)' }}>n8n</strong> automations, <strong style={{ color: 'var(--gold2)' }}>Twenty</strong> CRM. See{' '}
-          <code style={{ color: 'var(--moss2)' }}>docs/MESSAGING_STACK.md</code> for how this compares to union-style apps.
+        <h1 style={h1}>Start here</h1>
+        <p style={{ color: 'var(--dim)', maxWidth: 640, margin: 0, lineHeight: 1.55, fontSize: '0.95rem' }}>
+          Three things. No training deck. Open the board, add people in the CRM, or send a message from this page.
         </p>
       </header>
 
-      <section
+      <section aria-label="Main actions" style={{ marginBottom: '2.5rem' }}>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+            gap: '1rem',
+            maxWidth: 900,
+          }}
+        >
+          <a className="at-start-tile" href={twentyPipelineUrl} target="_blank" rel="noreferrer" style={actionCard}>
+            <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--gold2)', marginBottom: '0.35rem', letterSpacing: '0.02em' }}>
+              1 · Deal board
+            </div>
+            <p style={{ margin: 0, color: 'var(--dim)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+              See every sale as a card. Drag a card when something changes (new lead → call booked → enrolled).
+            </p>
+            <span style={{ display: 'inline-block', marginTop: '0.85rem', fontSize: '0.75rem', color: 'var(--moss2)' }}>
+              Opens Twenty →
+            </span>
+          </a>
+
+          <a className="at-start-tile" href={twentyPeopleUrl} target="_blank" rel="noreferrer" style={actionCard}>
+            <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--gold2)', marginBottom: '0.35rem', letterSpacing: '0.02em' }}>
+              2 · People
+            </div>
+            <p style={{ margin: 0, color: 'var(--dim)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+              Everyone you talk to lives here. Use the <strong style={{ color: 'var(--moss2)' }}>+</strong> button in Twenty to add someone, or jot a note on their page after a call.
+            </p>
+            <span style={{ display: 'inline-block', marginTop: '0.85rem', fontSize: '0.75rem', color: 'var(--moss2)' }}>
+              Opens Twenty →
+            </span>
+          </a>
+
+          <a className="at-start-tile" href="#messages" style={actionCard}>
+            <div style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--gold2)', marginBottom: '0.35rem', letterSpacing: '0.02em' }}>
+              3 · Send a message
+            </div>
+            <p style={{ margin: 0, color: 'var(--dim)', fontSize: '0.82rem', lineHeight: 1.55 }}>
+              Text SMS or WhatsApp (template) from here. Same phone number you use everywhere else.
+            </p>
+            <span style={{ display: 'inline-block', marginTop: '0.85rem', fontSize: '0.75rem', color: 'var(--moss2)' }}>
+              Scroll to forms ↓
+            </span>
+          </a>
+        </div>
+
+        <div
+          style={{
+            marginTop: '1.25rem',
+            padding: '1rem 1.15rem',
+            borderRadius: 12,
+            border: '1px solid rgba(212, 168, 75, 0.25)',
+            background: 'rgba(212, 168, 75, 0.05)',
+            maxWidth: 720,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--dim)', lineHeight: 1.6 }}>
+            <strong style={{ color: 'var(--gold2)' }}>Remember:</strong> If it mattered, it goes on the person in Twenty (note or card move). Texts and forms fill in the rest automatically.
+          </p>
+        </div>
+      </section>
+
+      <details
         style={{
-          marginBottom: '1.5rem',
-          padding: '1rem 1.15rem',
+          marginBottom: '2rem',
           borderRadius: 12,
-          border: '1px solid rgba(212, 168, 75, 0.35)',
-          background: 'rgba(212, 168, 75, 0.06)',
+          border: '1px solid var(--moss-border)',
+          background: 'rgba(6, 12, 22, 0.6)',
+          padding: '0.5rem 1rem',
           maxWidth: 720,
         }}
       >
-        <div
-          style={{
-            fontSize: '0.65rem',
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--gold)',
-            marginBottom: '0.5rem',
-          }}
-        >
-          Client demo — SMS, WhatsApp, sales flow
+        <summary style={{ cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dim)', padding: '0.35rem 0' }}>
+          For admins — bridge, n8n, demo script
+        </summary>
+        <div style={{ padding: '0.75rem 0 0.5rem', borderTop: '1px solid var(--moss-border)', marginTop: '0.5rem' }}>
+          <p style={{ color: 'var(--dim)', fontSize: '0.78rem', lineHeight: 1.6, margin: '0 0 0.75rem' }}>
+            Stack: <strong style={{ color: 'var(--gold2)' }}>bridge</strong> ingress, <strong style={{ color: 'var(--gold2)' }}>n8n</strong> automations,{' '}
+            <strong style={{ color: 'var(--gold2)' }}>Twenty</strong> CRM. Details: <code style={{ color: 'var(--moss2)' }}>docs/MESSAGING_STACK.md</code>.
+          </p>
+          <ol style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--dim)', fontSize: '0.75rem', lineHeight: 1.65 }}>
+            <li>Inbound SMS &amp; WhatsApp → Twenty (one contact).</li>
+            <li>Funnel / UTM → same CRM (merge by email).</li>
+            <li>Sales: stages in Twenty + optional <code style={{ color: 'var(--moss2)' }}>sales-journey</code> webhook.</li>
+          </ol>
+          <p style={{ margin: '0.65rem 0 0', fontSize: '0.7rem', color: 'var(--dim)' }}>
+            Client demo script: <code style={{ color: 'var(--moss2)' }}>docs/DEMO_MIKE.md</code>
+          </p>
         </div>
-        <ol style={{ margin: 0, paddingLeft: '1.25rem', color: 'var(--dim)', fontSize: '0.78rem', lineHeight: 1.65 }}>
-          <li>
-            <strong style={{ color: 'var(--gold2)' }}>Inbound</strong> SMS &amp; WhatsApp → bridge → n8n →{' '}
-            <strong style={{ color: 'var(--moss2)' }}>Twenty</strong> (one contact; history on{' '}
-            <code style={{ color: 'var(--moss2)' }}>jobTitle</code>).
-          </li>
-          <li>
-            <strong style={{ color: 'var(--gold2)' }}>Funnel</strong> / UTM → same CRM (merge by email).
-          </li>
-          <li>
-            <strong style={{ color: 'var(--gold2)' }}>Sales</strong>: opportunity stages in Twenty + optional{' '}
-            <code style={{ color: 'var(--moss2)' }}>sales-journey</code> webhook.
-          </li>
-        </ol>
-        <p style={{ margin: '0.65rem 0 0', fontSize: '0.7rem', color: 'var(--dim)' }}>
-          Step-by-step script: <code style={{ color: 'var(--moss2)' }}>docs/DEMO_MIKE.md</code>
-        </p>
-      </section>
+      </details>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1rem' }}>
         <div style={card}>
@@ -231,7 +297,22 @@ export default function Home() {
           </p>
         </div>
 
-        <div style={{ ...card, gridColumn: '1 / -1', maxWidth: 560 }}>
+        <div style={card}>
+          <div style={{ fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dim)', marginBottom: '0.75rem' }}>
+            Twenty CRM (direct)
+          </div>
+          <a href={twentyOrigin} target="_blank" rel="noreferrer" style={{ fontSize: '1rem' }}>
+            Open app home →
+          </a>
+          <p style={{ color: 'var(--dim)', fontSize: '0.72rem', margin: '0.75rem 0 0', lineHeight: 1.5 }}>
+            CRM base: <code style={{ color: 'var(--moss2)', fontSize: '0.65rem' }}>{twentyOrigin}</code>
+            <br />
+            If &quot;Deal board&quot; or &quot;People&quot; links 404, set <code style={{ color: 'var(--moss2)' }}>NEXT_PUBLIC_TWENTY_PATH_*</code> in{' '}
+            <code style={{ color: 'var(--moss2)' }}>.env.local</code>.
+          </p>
+        </div>
+
+        <div id="messages" style={{ ...card, gridColumn: '1 / -1', maxWidth: 560, scrollMarginTop: '1.25rem' }}>
           <div style={{ fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dim)', marginBottom: '0.75rem' }}>
             Compose SMS (Twilio via n8n)
           </div>
@@ -445,18 +526,6 @@ export default function Home() {
               {sendWaResult.n8nStatus != null ? ` (n8n HTTP ${sendWaResult.n8nStatus})` : ''}
             </p>
           )}
-        </div>
-
-        <div style={card}>
-          <div style={{ fontSize: '0.65rem', letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--dim)', marginBottom: '0.75rem' }}>
-            Twenty CRM
-          </div>
-          <a href="http://localhost:3020" target="_blank" rel="noreferrer" style={{ fontSize: '1rem' }}>
-            Open CRM →
-          </a>
-          <p style={{ color: 'var(--dim)', fontSize: '0.75rem', margin: '0.75rem 0 0' }}>
-            People, opportunities, pipeline — source of truth.
-          </p>
         </div>
 
         <div style={card}>

@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'AntiTrader — Messaging console',
-  description: 'Operator home for bridge, n8n automations, and CRM messaging.',
+  title: 'AntiTrader — Start here',
+  description: 'Simple home: deal board, people, and messages — plus operator tools for bridge and n8n.',
 }
 
 export default function RootLayout({ children }: { children: ReactNode }) {
